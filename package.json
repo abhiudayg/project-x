@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "description": "X: Declarative Execution Protocol for AI Agents",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "bin": {
+    "project-x": "./dist/bin/project-x.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "node --test 'test/**/*.test.ts'",

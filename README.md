@@ -123,7 +123,54 @@ pnpm install
 pnpm run build
 ```
 
-### Programmatic Usage
+### CLI Usage (`project-x`)
+
+Project X includes a zero-dependency CLI for terminal automation, CI/CD gates, and developer debugging:
+
+```bash
+# 1. Validate plan syntax, schema, and DAG dependencies without executing side-effects
+node dist/bin/project-x.js validate verify/fixtures/valid-multi-step.yaml
+
+# 2. Perform a pre-execution dry run check
+node dist/bin/project-x.js run verify/fixtures/valid-multi-step.yaml --dry-run
+
+# 3. Execute plan with policy and output receipt
+node dist/bin/project-x.js run verify/fixtures/valid-multi-step.yaml --out receipt.json
+
+# 4. Inspect and pretty-print an execution receipt
+node dist/bin/project-x.js inspect receipt.json
+```
+
+### Transparent MCP Gateway Proxy
+
+Project X can inject transparently between any AI Agent and upstream MCP servers:
+
+```typescript
+import { MCPGatewayProxy, InMemoryToolAdapter } from "project-x";
+
+const upstream = new InMemoryToolAdapter();
+// Register upstream tools (Kubernetes, Postgres, etc.)
+
+// Wrap upstream adapter with Project X Gateway
+const gateway = new MCPGatewayProxy(upstream, {
+  policy: { allowWrites: false },
+});
+
+// Exposes all upstream tools PLUS 'x_execute_plan' meta-tool
+const tools = await gateway.listTools();
+
+// Handle standard MCP JSON-RPC requests
+const rpcResponse = await gateway.handleJsonRpc({
+  id: 1,
+  method: "tools/call",
+  params: {
+    name: "x_execute_plan",
+    arguments: { plan: planYaml },
+  },
+});
+```
+
+### Programmatic Library Usage
 
 ```typescript
 import { Interpreter, parsePlan, InMemoryToolAdapter } from "project-x";
