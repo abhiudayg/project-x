@@ -1,0 +1,32 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: multi-region-dns-check
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 10000
+    maxResultBytes: 15000
+  permissions:
+    - dns.read
+  steps:
+    - id: dns_us_east
+      tool: network.resolve_dns
+      arguments:
+        domain: "api.global.infra"
+        resolver: "ns1.us-east.net"
+    - id: dns_eu_west
+      tool: network.resolve_dns
+      arguments:
+        domain: "api.global.infra"
+        resolver: "ns1.eu-west.net"
+    - id: dns_ap_south
+      tool: network.resolve_dns
+      arguments:
+        domain: "api.global.infra"
+        resolver: "ns1.ap-south.net"
+  output:
+    include:
+      - dns_us_east
+      - dns_eu_west
+      - dns_ap_south

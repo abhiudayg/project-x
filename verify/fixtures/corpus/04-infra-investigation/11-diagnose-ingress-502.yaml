@@ -1,0 +1,37 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: diagnose-ingress-502
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 25000
+  permissions:
+    - ingress.read
+    - upstream.read
+  steps:
+    - id: ingress_config
+      tool: ingress.get_routing_table
+      arguments:
+        host: "checkout.store.com"
+    - id: backend_endpoints
+      tool: k8s.get_endpoints_for_service
+      dependsOn:
+        - ingress_config
+      arguments:
+        serviceName:
+          from: ingress_config
+          path: backendService
+    - id: endpoint_health_check
+      tool: network.http_ping_target
+      dependsOn:
+        - backend_endpoints
+      arguments:
+        targetIp:
+          from: backend_endpoints
+          path: readyAddresses.0
+        port: 8080
+  output:
+    include:
+      - endpoint_health_check

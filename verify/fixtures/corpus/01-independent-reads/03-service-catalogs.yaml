@@ -1,0 +1,24 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: service-catalogs-scan
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 10000
+    maxResultBytes: 25000
+  permissions:
+    - catalog.read
+  steps:
+    - id: auth_catalog
+      tool: service_catalog.query
+      arguments:
+        domain: "identity"
+    - id: billing_catalog
+      tool: service_catalog.query
+      arguments:
+        domain: "payments"
+  output:
+    include:
+      - auth_catalog
+      - billing_catalog

@@ -1,0 +1,29 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: database-migration-gate
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 20000
+  permissions:
+    - db.read
+  steps:
+    - id: dry_run_schema
+      tool: db_migrator.dry_run_ddl
+      arguments:
+        migrationId: "20261024_add_user_indices"
+    - id: dba_approval_judgment
+      tool: db_migrator.apply_live_migration
+      dependsOn:
+        - dry_run_schema
+      requiresJudgment: true
+      arguments:
+        migrationId: "20261024_add_user_indices"
+        ddlPlan:
+          from: dry_run_schema
+          path: planSummary
+  output:
+    include:
+      - dry_run_schema

@@ -1,0 +1,25 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: unauthorized-write-blocked
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 15000
+  steps:
+    - id: inspect_storage
+      tool: storage.get_bucket_info
+      arguments:
+        bucket: "analytics-backup"
+    - id: delete_bucket
+      tool: storage.purge_bucket
+      dependsOn:
+        - inspect_storage
+      arguments:
+        bucket:
+          from: inspect_storage
+          path: name
+  output:
+    include:
+      - delete_bucket

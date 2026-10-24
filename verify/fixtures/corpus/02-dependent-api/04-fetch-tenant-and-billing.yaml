@@ -1,0 +1,38 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: tenant-billing-pipeline
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 20000
+  permissions:
+    - tenant.read
+    - billing.read
+  steps:
+    - id: lookup_tenant
+      tool: tenant.get_by_slug
+      arguments:
+        slug: "acme-corp"
+    - id: get_subscriptions
+      tool: billing.list_subscriptions
+      dependsOn:
+        - lookup_tenant
+      arguments:
+        customerId:
+          from: lookup_tenant
+          path: customerId
+    - id: get_invoices
+      tool: billing.list_invoices
+      dependsOn:
+        - lookup_tenant
+      arguments:
+        customerId:
+          from: lookup_tenant
+          path: customerId
+        limit: 5
+  output:
+    include:
+      - get_subscriptions
+      - get_invoices

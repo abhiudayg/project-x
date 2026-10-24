@@ -1,0 +1,28 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: security-alert-triage
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 20000
+  permissions:
+    - security.read
+  steps:
+    - id: fetch_alert
+      tool: siem.get_unresolved_alert
+      arguments:
+        alertId: "alert-sec-884"
+    - id: human_judgment_triage
+      tool: siem.categorize_incident
+      dependsOn:
+        - fetch_alert
+      requiresJudgment: true
+      arguments:
+        incidentPayload:
+          from: fetch_alert
+          path: payload
+  output:
+    include:
+      - fetch_alert

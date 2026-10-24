@@ -1,0 +1,21 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: idempotent-config-update-verified
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 15000
+  permissions:
+    - config.write
+  steps:
+    - id: update_flag
+      tool: feature_flag.set_boolean
+      idempotencyKey: "flag-checkout-v2-enable"
+      arguments:
+        flag: "enable_new_checkout"
+        enabled: true
+  output:
+    include:
+      - update_flag

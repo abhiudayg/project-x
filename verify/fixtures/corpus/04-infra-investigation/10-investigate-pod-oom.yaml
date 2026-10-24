@@ -1,0 +1,28 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: investigate-pod-oom
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 30000
+  permissions:
+    - k8s.read
+  steps:
+    - id: pod_events
+      tool: k8s.get_pod_events
+      arguments:
+        namespace: "analytics"
+        pod: "spark-worker-0"
+    - id: container_status
+      tool: k8s.get_container_termination_reason
+      dependsOn:
+        - pod_events
+      arguments:
+        pod: "spark-worker-0"
+        container: "executor"
+  output:
+    include:
+      - pod_events
+      - container_status

@@ -1,0 +1,37 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: git-commit-to-artifact-pipeline
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 20000
+  permissions:
+    - vcs.read
+    - ci.read
+  steps:
+    - id: get_latest_commit
+      tool: git.get_branch_head
+      arguments:
+        repo: "org/core-engine"
+        branch: "main"
+    - id: fetch_pipeline_run
+      tool: ci.find_build_by_sha
+      dependsOn:
+        - get_latest_commit
+      arguments:
+        commitSha:
+          from: get_latest_commit
+          path: sha
+    - id: get_published_artifact
+      tool: registry.get_package_metadata
+      dependsOn:
+        - fetch_pipeline_run
+      arguments:
+        packageId:
+          from: fetch_pipeline_run
+          path: artifactId
+  output:
+    include:
+      - get_published_artifact

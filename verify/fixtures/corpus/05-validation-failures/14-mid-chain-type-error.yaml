@@ -1,0 +1,25 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: mid-chain-type-error
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 10000
+    maxResultBytes: 10000
+  steps:
+    - id: fetch_cluster
+      tool: k8s.get_cluster_info
+      arguments:
+        cluster: "prod-1"
+    - id: invalid_tool_reference
+      tool: non_existent.undefined_tool
+      dependsOn:
+        - fetch_cluster
+    - id: downstream_step
+      tool: k8s.get_cluster_info
+      dependsOn:
+        - invalid_tool_reference
+  output:
+    include:
+      - downstream_step

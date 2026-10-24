@@ -1,0 +1,36 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: order-shipment-tracking
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 15000
+  permissions:
+    - commerce.read
+    - logistics.read
+  steps:
+    - id: order_details
+      tool: store.get_order
+      arguments:
+        orderId: "ord-9821"
+    - id: fulfillment
+      tool: warehouse.get_fulfillment
+      dependsOn:
+        - order_details
+      arguments:
+        orderId:
+          from: order_details
+          path: id
+    - id: carrier_status
+      tool: carrier.track_package
+      dependsOn:
+        - fulfillment
+      arguments:
+        trackingNumber:
+          from: fulfillment
+          path: trackingNumber
+  output:
+    include:
+      - carrier_status

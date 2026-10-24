@@ -1,0 +1,29 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: ab-experiment-rollout-decision
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 20000
+  permissions:
+    - experiment.read
+  steps:
+    - id: sample_metrics
+      tool: ab_testing.get_sample_ratios
+      arguments:
+        experimentId: "exp-checkout-reorder"
+    - id: statistical_significance_judgment
+      tool: ab_testing.record_decision
+      dependsOn:
+        - sample_metrics
+      requiresJudgment: true
+      arguments:
+        experimentId: "exp-checkout-reorder"
+        ratios:
+          from: sample_metrics
+          path: stats
+  output:
+    include:
+      - sample_metrics

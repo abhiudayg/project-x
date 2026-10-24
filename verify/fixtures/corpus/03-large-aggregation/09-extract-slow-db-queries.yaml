@@ -1,0 +1,28 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: extract-slow-db-queries
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 25000
+  permissions:
+    - database.read
+  steps:
+    - id: pg_stat_dump
+      tool: postgres.get_stat_statements
+      arguments:
+        database: "production_master"
+    - id: top_slow_queries
+      tool: postgres.rank_queries_by_duration
+      dependsOn:
+        - pg_stat_dump
+      arguments:
+        statements:
+          from: pg_stat_dump
+          path: statements
+        limit: 10
+  output:
+    include:
+      - top_slow_queries

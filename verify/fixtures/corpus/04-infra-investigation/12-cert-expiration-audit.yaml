@@ -1,0 +1,27 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: cert-expiration-audit
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 20000
+  permissions:
+    - security.read
+  steps:
+    - id: ingress_tls_secrets
+      tool: k8s.list_tls_secrets
+      arguments:
+        namespace: "production"
+    - id: cert_expiry_check
+      tool: cert_manager.inspect_expiration
+      dependsOn:
+        - ingress_tls_secrets
+      arguments:
+        secretNames:
+          from: ingress_tls_secrets
+          path: secretNames
+  output:
+    include:
+      - cert_expiry_check

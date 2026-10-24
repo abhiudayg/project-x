@@ -1,0 +1,29 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: filter-http-error-logs
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 30000
+  permissions:
+    - logs.read
+  steps:
+    - id: raw_access_logs
+      tool: log_store.query_range
+      arguments:
+        service: "api-gateway"
+        minStatusCode: 500
+        lookbackMinutes: 30
+    - id: top_affected_routes
+      tool: log_analyzer.extract_route_summary
+      dependsOn:
+        - raw_access_logs
+      arguments:
+        events:
+          from: raw_access_logs
+          path: events
+  output:
+    include:
+      - top_affected_routes

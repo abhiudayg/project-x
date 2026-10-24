@@ -1,0 +1,28 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: aggregate-node-memory
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 25000
+  permissions:
+    - cluster.read
+  steps:
+    - id: node_dump
+      tool: k8s.describe_all_nodes
+      arguments:
+        clusterGroup: "compute-nodes"
+    - id: high_memory_nodes
+      tool: k8s.filter_nodes_above_threshold
+      dependsOn:
+        - node_dump
+      arguments:
+        nodes:
+          from: node_dump
+          path: items
+        thresholdPct: 85
+  output:
+    include:
+      - high_memory_nodes

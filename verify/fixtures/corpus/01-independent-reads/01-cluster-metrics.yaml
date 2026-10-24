@@ -1,0 +1,29 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: cluster-metrics-parallel
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 10000
+    maxResultBytes: 20000
+  permissions:
+    - metrics.read
+  steps:
+    - id: cpu_metrics
+      tool: telemetry.get_cluster_cpu
+      arguments:
+        cluster: "us-east-1"
+    - id: memory_metrics
+      tool: telemetry.get_cluster_memory
+      arguments:
+        cluster: "us-east-1"
+    - id: disk_metrics
+      tool: telemetry.get_cluster_disk
+      arguments:
+        cluster: "us-east-1"
+  output:
+    include:
+      - cpu_metrics
+      - memory_metrics
+      - disk_metrics

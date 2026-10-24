@@ -1,0 +1,28 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: scale-replicas-authorized
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 15000
+  permissions:
+    - k8s.write
+  steps:
+    - id: inspect_current
+      tool: k8s.get_deployment
+      arguments:
+        name: "worker-pool"
+    - id: scale_up
+      tool: k8s.scale_deployment
+      dependsOn:
+        - inspect_current
+      arguments:
+        name:
+          from: inspect_current
+          path: name
+        replicas: 5
+  output:
+    include:
+      - scale_up

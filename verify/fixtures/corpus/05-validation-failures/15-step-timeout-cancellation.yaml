@@ -1,0 +1,24 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: step-timeout-cancellation
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 10000
+    maxResultBytes: 10000
+  steps:
+    - id: fast_step
+      tool: mock.fast_tool
+    - id: timed_out_step
+      tool: mock.slow_hanging_tool
+      dependsOn:
+        - fast_step
+      timeoutMs: 50
+    - id: unreached_downstream
+      tool: mock.fast_tool
+      dependsOn:
+        - timed_out_step
+  output:
+    include:
+      - unreached_downstream

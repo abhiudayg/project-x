@@ -1,0 +1,25 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: cyclic-dependency-failure
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 10000
+    maxResultBytes: 10000
+  steps:
+    - id: node_alpha
+      tool: mock.read_alpha
+      dependsOn:
+        - node_gamma
+    - id: node_beta
+      tool: mock.read_beta
+      dependsOn:
+        - node_alpha
+    - id: node_gamma
+      tool: mock.read_gamma
+      dependsOn:
+        - node_beta
+  output:
+    include:
+      - node_gamma

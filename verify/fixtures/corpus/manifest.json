@@ -1,0 +1,181 @@
+{
+  "version": "0.2.0",
+  "generatedAt": "2026-10-24T19:10:00Z",
+  "categories": [
+    {
+      "id": 1,
+      "name": "independent_read_only",
+      "description": "Concurrent read calls with zero inter-step dependencies",
+      "tasks": [
+        {
+          "id": "corpus-01",
+          "name": "cluster-metrics-parallel",
+          "file": "01-independent-reads/01-cluster-metrics.yaml",
+          "expectedStatus": "complete"
+        },
+        {
+          "id": "corpus-02",
+          "name": "multi-region-dns-check",
+          "file": "01-independent-reads/02-multi-region-dns.yaml",
+          "expectedStatus": "complete"
+        },
+        {
+          "id": "corpus-03",
+          "name": "service-catalogs-scan",
+          "file": "01-independent-reads/03-service-catalogs.yaml",
+          "expectedStatus": "complete"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "dependent_multi_step_api",
+      "description": "Sequential steps binding output fields of prior operations",
+      "tasks": [
+        {
+          "id": "corpus-04",
+          "name": "tenant-billing-pipeline",
+          "file": "02-dependent-api/04-fetch-tenant-and-billing.yaml",
+          "expectedStatus": "complete"
+        },
+        {
+          "id": "corpus-05",
+          "name": "git-commit-to-artifact-pipeline",
+          "file": "02-dependent-api/05-git-commit-to-artifact.yaml",
+          "expectedStatus": "complete"
+        },
+        {
+          "id": "corpus-06",
+          "name": "order-shipment-tracking",
+          "file": "02-dependent-api/06-order-to-shipment-tracking.yaml",
+          "expectedStatus": "complete"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "large_result_aggregation",
+      "description": "Extracting and filtering structured records without leaking raw payloads to model context",
+      "tasks": [
+        {
+          "id": "corpus-07",
+          "name": "filter-http-error-logs",
+          "file": "03-large-aggregation/07-filter-http-error-logs.yaml",
+          "expectedStatus": "complete"
+        },
+        {
+          "id": "corpus-08",
+          "name": "aggregate-node-memory",
+          "file": "03-large-aggregation/08-aggregate-node-memory.yaml",
+          "expectedStatus": "complete"
+        },
+        {
+          "id": "corpus-09",
+          "name": "extract-slow-db-queries",
+          "file": "03-large-aggregation/09-extract-slow-db-queries.yaml",
+          "expectedStatus": "complete"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "infrastructure_investigation",
+      "description": "Root cause diagnostics across Kubernetes and cloud resources",
+      "tasks": [
+        {
+          "id": "corpus-10",
+          "name": "investigate-pod-oom",
+          "file": "04-infra-investigation/10-investigate-pod-oom.yaml",
+          "expectedStatus": "complete"
+        },
+        {
+          "id": "corpus-11",
+          "name": "diagnose-ingress-502",
+          "file": "04-infra-investigation/11-diagnose-ingress-502.yaml",
+          "expectedStatus": "complete"
+        },
+        {
+          "id": "corpus-12",
+          "name": "cert-expiration-audit",
+          "file": "04-infra-investigation/12-cert-expiration-audit.yaml",
+          "expectedStatus": "complete"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "validation_failures_and_timeouts",
+      "description": "Negative testing and pre-execution rejection boundaries",
+      "tasks": [
+        {
+          "id": "corpus-13",
+          "name": "cyclic-dependency-failure",
+          "file": "05-validation-failures/13-cycle-dependency-error.yaml",
+          "expectedStatus": "validation_error"
+        },
+        {
+          "id": "corpus-14",
+          "name": "mid-chain-type-error",
+          "file": "05-validation-failures/14-mid-chain-type-error.yaml",
+          "expectedStatus": "pre_execution_rejection"
+        },
+        {
+          "id": "corpus-15",
+          "name": "step-timeout-cancellation",
+          "file": "05-validation-failures/15-step-timeout-cancellation.yaml",
+          "expectedStatus": "failed"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "controlled_write_operations",
+      "description": "Explicit write authorization, policy gating, and verification read-backs",
+      "tasks": [
+        {
+          "id": "corpus-16",
+          "name": "scale-replicas-authorized",
+          "file": "06-controlled-writes/16-scale-replicas-authorized.yaml",
+          "expectedStatus": "complete"
+        },
+        {
+          "id": "corpus-17",
+          "name": "unauthorized-write-blocked",
+          "file": "06-controlled-writes/17-unauthorized-write-blocked.yaml",
+          "expectedStatus": "policy_denied"
+        },
+        {
+          "id": "corpus-18",
+          "name": "idempotent-config-update-verified",
+          "file": "06-controlled-writes/18-idempotent-config-update-verified.yaml",
+          "expectedStatus": "complete"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "requires_judgment_handbacks",
+      "description": "Handing control back to model at ambiguity/judgment gates",
+      "tasks": [
+        {
+          "id": "corpus-19",
+          "name": "security-alert-triage",
+          "file": "07-requires-judgment/19-security-alert-triage.yaml",
+          "expectedStatus": "incomplete"
+        },
+        {
+          "id": "corpus-20",
+          "name": "ab-experiment-rollout-decision",
+          "file": "07-requires-judgment/20-ab-experiment-rollout-decision.yaml",
+          "expectedStatus": "incomplete"
+        },
+        {
+          "id": "corpus-21",
+          "name": "database-migration-gate",
+          "file": "07-requires-judgment/21-database-migration-gate.yaml",
+          "expectedStatus": "incomplete"
+        }
+      ]
+    }
+  ]
+}
