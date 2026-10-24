@@ -1,0 +1,13 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: unauthorized-write
+spec:
+  steps:
+    - id: inspect
+      tool: k8s.get_service
+    - id: mutate
+      tool: k8s.delete_deployment
+      dependsOn: [inspect]
+  output:
+    include: [mutate]

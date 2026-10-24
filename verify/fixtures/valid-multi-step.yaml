@@ -1,0 +1,32 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: valid-multi-step
+spec:
+  limits:
+    maxSteps: 5
+    timeoutMs: 15000
+    maxResultBytes: 12000
+  permissions:
+    - deployments.read
+    - logs.read
+  steps:
+    - id: deployment
+      tool: kubernetes.get_deployment
+      arguments:
+        namespace: production
+        name: payments-api
+    - id: logs
+      tool: kubernetes.get_logs
+      dependsOn:
+        - deployment
+      arguments:
+        namespace: production
+        deployment:
+          from: deployment
+          path: name
+        tailLines: 100
+  output:
+    include:
+      - deployment
+      - logs

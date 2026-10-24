@@ -1,0 +1,22 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: pre-exec-error-step4
+spec:
+  steps:
+    - id: s1
+      tool: k8s.get_service
+    - id: s2
+      tool: k8s.get_pods
+      dependsOn: [s1]
+    - id: s3
+      tool: k8s.get_ingress
+      dependsOn: [s2]
+    - id: s4
+      tool: k8s.unknown_capability
+      dependsOn: [s3]
+    - id: s5
+      tool: k8s.get_service
+      dependsOn: [s4]
+  output:
+    include: [s5]

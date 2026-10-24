@@ -1,0 +1,14 @@
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: requires-judgment-handback
+spec:
+  steps:
+    - id: fetch_metrics
+      tool: k8s.get_metrics
+    - id: evaluate_alert
+      tool: k8s.evaluate_alert
+      dependsOn: [fetch_metrics]
+      requiresJudgment: true
+  output:
+    include: [fetch_metrics]

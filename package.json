@@ -1,0 +1,28 @@
+{
+  "name": "project-x",
+  "version": "0.1.0",
+  "description": "X: Declarative Execution Protocol for AI Agents",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test 'test/**/*.test.ts'",
+    "verify": "bash .verify/run.sh"
+  },
+  "keywords": [
+    "agent",
+    "mcp",
+    "orchestration",
+    "declarative-execution"
+  ],
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "zod": "^3.24.0",
+    "yaml": "^2.7.0"
+  }
+}
