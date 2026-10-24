@@ -36,6 +36,7 @@ export const PlanStepSchema = z
     tool: z.string().min(1),
     dependsOn: z.array(z.string().min(1)).optional().default([]),
     arguments: z.record(z.unknown()).default({}),
+    output: z.object({ include: z.array(z.string()).optional() }).optional(),
     requiresJudgment: z.boolean().optional().default(false),
     timeoutMs: z.number().int().positive().optional(),
     idempotencyKey: z.string().optional(),
