@@ -102,7 +102,7 @@ spec:
 
 ## 4. Architectural Guarantees & Differentiation (PRD §10.3)
 
-Project X is benchmarked against **Baseline A (Native MCP)** and **Baseline B (Hardened Code Mode)**:
+Project X is benchmarked against **Baseline A (Native MCP)** and **Baseline B (Hardened Code Mode)**. Detailed methodology, test apparatus, and comparative reports are documented in [docs/BENCHMARKS.md](docs/BENCHMARKS.md):
 
 | Guarantee | Test | Expected Result | Verified |
 |---|---|---|:---:|
