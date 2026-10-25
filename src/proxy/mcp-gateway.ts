@@ -2,10 +2,12 @@ import { ToolAdapter, ToolCapability } from "../adapters/types.js";
 import { Interpreter } from "../interpreter.js";
 import { RuntimePolicy } from "../policy.js";
 import { ExecutionReceipt } from "../types.js";
+import { auditTrace } from "../audit.js";
 
 export interface MCPGatewayOptions {
   readonly policy?: RuntimePolicy;
   readonly defaultTimeoutMs?: number;
+  readonly enableAuditTool?: boolean;
 }
 
 export interface MCPToolDefinition {
@@ -58,13 +60,61 @@ export class MCPGatewayProxy {
       },
     };
 
-    return [...mapped, xExecutePlanTool];
+    const xAuditTraceTool: MCPToolDefinition = {
+      name: "x_audit_trace",
+      description:
+        "Audit an agent execution trace, calculate round-trip and token savings, and synthesize a declarative ExecutionPlan (x.dev/v1alpha1).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          trace: {
+            description: "Agent execution trace object or JSON string containing turns or OpenAI-format messages.",
+          },
+        },
+        required: ["trace"],
+      },
+    };
+
+    const tools: MCPToolDefinition[] = [...mapped, xExecutePlanTool];
+    if (this.options.enableAuditTool) {
+      tools.push(xAuditTraceTool);
+    }
+    return tools;
   }
 
   async callTool(
     name: string,
     args: Record<string, unknown>
   ): Promise<MCPCallToolResponse> {
+    if (name === "x_audit_trace") {
+      try {
+        let traceData = args.trace;
+        if (typeof traceData === "string") {
+          traceData = JSON.parse(traceData);
+        }
+        const report = auditTrace(traceData);
+        return {
+          isError: false,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(report, null, 2),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Audit failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+        };
+      }
+    }
+
     if (name === "x_execute_plan") {
       const planRaw = args.plan ?? args.planYaml;
       if (typeof planRaw !== "string") {

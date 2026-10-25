@@ -128,16 +128,19 @@ pnpm run build
 Project X includes a zero-dependency CLI for terminal automation, CI/CD gates, and developer debugging:
 
 ```bash
-# 1. Validate plan syntax, schema, and DAG dependencies without executing side-effects
+# 1. Audit an existing agent trace (OpenAI, LangChain, or raw JSON), calculate token/cost savings, and compile an ExecutionPlan
+node dist/bin/project-x.js audit trace.json --out-plan plan.yaml --out-report audit-report.md
+
+# 2. Validate plan syntax, schema, and DAG dependencies without executing side-effects
 node dist/bin/project-x.js validate verify/fixtures/valid-multi-step.yaml
 
-# 2. Perform a pre-execution dry run check
+# 3. Perform a pre-execution dry run check
 node dist/bin/project-x.js run verify/fixtures/valid-multi-step.yaml --dry-run
 
-# 3. Execute plan with policy and output receipt
+# 4. Execute plan with policy and output receipt
 node dist/bin/project-x.js run verify/fixtures/valid-multi-step.yaml --out receipt.json
 
-# 4. Inspect and pretty-print an execution receipt
+# 5. Inspect and pretty-print an execution receipt
 node dist/bin/project-x.js inspect receipt.json
 ```
 
@@ -214,6 +217,15 @@ bash .verify/run.sh
 
 ---
 
-## 7. License
+## 7. Documentation Guides
+
+- [Developer Guide & SDK Reference](docs/DEVELOPER_GUIDE.md)
+- [Trace Audit & Plan Compilation Guide](docs/AUDIT_GUIDE.md)
+- [Empirical Benchmarks & Differentiation](docs/BENCHMARKS.md)
+- [Phase 2 Multi-Model Evaluation](docs/PHASE_2_EVALUATION.md)
+
+---
+
+## 8. License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.

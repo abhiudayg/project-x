@@ -10,6 +10,7 @@ import { InMemoryToolAdapter } from "../src/adapters/in-memory.js";
 import { RuntimePolicy } from "../src/policy.js";
 import { ExecutionReceipt } from "../src/types.js";
 import { MultiModelBenchmarkRunner } from "../src/benchmark/runner.js";
+import { auditTrace } from "../src/audit.js";
 
 const printHelp = () => {
   console.log(`
@@ -19,10 +20,15 @@ Usage:
   project-x <command> [options]
 
 Commands:
+  audit <trace.json>         Audit agent execution trace, calculate token/cost savings, and synthesize ExecutionPlan
   validate <file.yaml>       Validate plan syntax, schema, and DAG dependencies without side-effects
   run <file.yaml>            Execute plan with security policy and emit an execution receipt
   inspect <receipt.json>     Pretty-print an execution receipt and audit verification status
   benchmark [options]        Run multi-model comparative benchmark across 21 tasks and evaluate decision gates
+
+Options for 'audit':
+  --out-plan <file.yaml>     Save generated ExecutionPlan YAML to file
+  --out-report <file.md>     Save formatted markdown audit report to file
 
 Options for 'run':
   --policy <file.json>       Path to JSON runtime policy file
@@ -40,6 +46,47 @@ const main = async () => {
   if (!command || command === "--help" || command === "-h") {
     printHelp();
     process.exit(0);
+  }
+
+  if (command === "audit") {
+    const { values, positionals } = parseArgs({
+      args: args.slice(1),
+      options: {
+        "out-plan": { type: "string" },
+        "out-report": { type: "string" },
+        help: { type: "boolean", short: "h" },
+      },
+      allowPositionals: true,
+    });
+
+    const filePath = positionals[0];
+    if (!filePath) {
+      console.error("Error: Missing trace file path for 'audit'");
+      process.exit(1);
+    }
+
+    try {
+      const rawContent = fs.readFileSync(path.resolve(filePath), "utf8");
+      const parsed = JSON.parse(rawContent);
+      const report = auditTrace(parsed);
+
+      console.log(report.markdownSummary);
+
+      if (values["out-plan"]) {
+        fs.writeFileSync(path.resolve(values["out-plan"]), report.planYaml, "utf8");
+        console.log(`Plan written to: ${values["out-plan"]}`);
+      }
+
+      if (values["out-report"]) {
+        fs.writeFileSync(path.resolve(values["out-report"]), report.markdownSummary, "utf8");
+        console.log(`Audit report written to: ${values["out-report"]}`);
+      }
+
+      process.exit(0);
+    } catch (err) {
+      console.error(`❌ Audit failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
   }
 
   if (command === "validate") {
