@@ -23,7 +23,8 @@ node --test 'dist/test/**/*.test.js' | tee "$ARTIFACTS_DIR/test-results.log"
 
 if command -v cargo >/dev/null 2>&1; then
   echo "Step 2.5: Executing Rust Workspace Test Suite..."
-  cargo test --workspace | tee -a "$ARTIFACTS_DIR/test-results.log"
+  cargo test -p project-x-core -p project-x-cli -p project-x-node | tee -a "$ARTIFACTS_DIR/test-results.log"
+  cargo test -p project-x-py --no-default-features | tee -a "$ARTIFACTS_DIR/test-results.log"
 fi
 
 echo "Step 3: Verifying Input Fixture Immutability..."

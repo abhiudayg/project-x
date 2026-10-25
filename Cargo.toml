@@ -2,5 +2,7 @@
 members = [
     "crates/project-x-core",
     "crates/project-x-cli",
+    "crates/project-x-py",
+    "crates/project-x-node",
 ]
 resolver = "2"

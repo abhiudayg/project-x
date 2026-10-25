@@ -1,0 +1,17 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "project-x"
+version = "0.1.0"
+description = "Project X: Declarative Execution Protocol for AI Agents"
+authors = [{ name = "Abhiuday Gupta" }]
+readme = "../../README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries",
+]

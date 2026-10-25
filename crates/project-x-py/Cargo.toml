@@ -1,0 +1,21 @@
+[package]
+name = "project-x-py"
+version = "0.1.0"
+edition = "2021"
+description = "Python bindings for Project X: Declarative Execution Protocol for AI Agents"
+license = "Apache-2.0"
+
+[lib]
+name = "project_x"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["extension-module"]
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+project-x-core = { path = "../project-x-core" }
+pyo3 = { version = "0.22", features = ["abi3-py310"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+tokio = { version = "1.40", features = ["full"] }
