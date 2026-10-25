@@ -10,3 +10,5 @@ export * from "./adapters/types.js";
 export * from "./adapters/in-memory.js";
 export * from "./adapters/mcp.js";
 export * from "./proxy/mcp-gateway.js";
+export * from "./integrations/client.js";
+export * from "./integrations/langchain.js";
