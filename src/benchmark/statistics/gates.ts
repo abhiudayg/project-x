@@ -39,7 +39,20 @@ export class DecisionGateEvaluator {
     silentLossCount: number,
     differentiationWins: number,
     interpreterLatencyOverheadPct: number,
-    interpreterBytesOverheadPct: number
+    interpreterBytesOverheadPct: number,
+    modelFamilyResults: Record<
+      string,
+      {
+        readonly tokenReductionVsMcp: BootstrapSummary;
+        readonly costReductionVsMcp: BootstrapSummary;
+        readonly taskCompletionRate: number;
+        readonly firstAttemptPlanSuccessRate: number;
+        readonly medianLatencyMs: number;
+        readonly p90LatencyMs: number;
+        readonly interpreterOverheadLatencyPct: number;
+        readonly interpreterOverheadBytesPct: number;
+      }
+    > = {}
   ): ComprehensiveEvaluationReport {
     const gates: DecisionGateOutcome[] = [
       {
@@ -117,7 +130,7 @@ export class DecisionGateEvaluator {
 
     return {
       generatedAt: new Date().toISOString(),
-      modelFamilyResults: {},
+      modelFamilyResults,
       gateOutcomes: gates,
       overallRecommendation,
     };

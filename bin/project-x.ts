@@ -9,6 +9,7 @@ import { Interpreter } from "../src/interpreter.js";
 import { InMemoryToolAdapter } from "../src/adapters/in-memory.js";
 import { RuntimePolicy } from "../src/policy.js";
 import { ExecutionReceipt } from "../src/types.js";
+import { MultiModelBenchmarkRunner } from "../src/benchmark/runner.js";
 
 const printHelp = () => {
   console.log(`
@@ -21,6 +22,7 @@ Commands:
   validate <file.yaml>       Validate plan syntax, schema, and DAG dependencies without side-effects
   run <file.yaml>            Execute plan with security policy and emit an execution receipt
   inspect <receipt.json>     Pretty-print an execution receipt and audit verification status
+  benchmark [options]        Run multi-model comparative benchmark across 21 tasks and evaluate decision gates
 
 Options for 'run':
   --policy <file.json>       Path to JSON runtime policy file
@@ -167,6 +169,49 @@ const main = async () => {
       process.exit(0);
     } catch (err) {
       console.error(`❌ Failed to inspect receipt: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  }
+
+  if (command === "benchmark") {
+    try {
+      const { values } = parseArgs({
+        args: args.slice(1),
+        options: {
+          trials: { type: "string", default: "5" },
+          out: { type: "string" },
+        },
+      });
+
+      const trialsCount = parseInt(values.trials ?? "5", 10);
+      console.log(`\n=== Running Multi-Model Benchmark (${trialsCount} trials/task) ===`);
+      const runner = new MultiModelBenchmarkRunner();
+      const report = await runner.runBenchmark(trialsCount);
+
+      console.log(`Report generated at: ${report.generatedAt}`);
+      console.log(`\nDecision Gates Evaluation Summary:`);
+      for (const gate of report.gateOutcomes) {
+        const mark = gate.passed ? "✅ PASS" : "❌ FAIL";
+        console.log(` [${mark}] ${gate.gateId}: ${gate.name}`);
+        console.log(`        Target:   ${gate.target}`);
+        console.log(`        Observed: ${gate.observed}`);
+        console.log(`        Details:  ${gate.rationale}`);
+      }
+      console.log(`\nOverall Recommendation: ${report.overallRecommendation}`);
+
+      if (values.out) {
+        fs.writeFileSync(
+          path.resolve(values.out),
+          JSON.stringify(report, null, 2),
+          "utf8"
+        );
+        console.log(`\nBenchmark report saved to: ${values.out}`);
+      }
+
+      const allPassed = report.gateOutcomes.every((g) => g.passed);
+      process.exit(allPassed ? 0 : 1);
+    } catch (err) {
+      console.error(`❌ Benchmark execution failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
   }

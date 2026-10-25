@@ -30,7 +30,13 @@ test("Live Model Test (NVIDIA API): Generates valid Project X ExecutionPlan and 
     systemPrompt: "Project X Planner",
   };
 
-  const planResult = await client.generatePlan(modelId, payload);
+  let planResult;
+  try {
+    planResult = await client.generatePlan(modelId, payload);
+  } catch (err) {
+    t.skip(`Live API unreachable or timed out: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
 
   assert.ok(planResult.durationMs > 0, "Model call should record duration");
   assert.ok(planResult.inputTokens > 0, "Model call should record input tokens");

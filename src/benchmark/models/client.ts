@@ -81,6 +81,7 @@ Emit the ExecutionPlan:`;
         temperature: 0.1,
         max_tokens: 600,
       }),
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!response.ok) {
@@ -160,6 +161,7 @@ Write script:`;
         temperature: 0.1,
         max_tokens: 400,
       }),
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!response.ok) {
