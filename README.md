@@ -118,30 +118,47 @@ Project X is benchmarked against **Baseline A (Native MCP)** and **Baseline B (H
 
 ### Installation
 
+#### Node.js / TypeScript
 ```bash
 pnpm install
 pnpm run build
 ```
 
+#### Rust (Native Core & CLI)
+```bash
+cargo build --release --workspace
+# Binary output: ./target/release/project-x
+```
+
 ### CLI Usage (`project-x`)
 
-Project X includes a zero-dependency CLI for terminal automation, CI/CD gates, and developer debugging:
+Project X includes both a Node.js CLI and a high-performance native Rust CLI:
 
 ```bash
 # 1. Audit an existing agent trace (OpenAI, LangChain, or raw JSON), calculate token/cost savings, and compile an ExecutionPlan
 node dist/bin/project-x.js audit trace.json --out-plan plan.yaml --out-report audit-report.md
+# Or via native Rust CLI:
+cargo run --bin project-x -- audit trace.json --out-plan plan.yaml --out-report audit-report.md
 
 # 2. Validate plan syntax, schema, and DAG dependencies without executing side-effects
 node dist/bin/project-x.js validate verify/fixtures/valid-multi-step.yaml
+# Or via native Rust CLI:
+cargo run --bin project-x -- validate verify/fixtures/valid-multi-step.yaml
 
 # 3. Perform a pre-execution dry run check
 node dist/bin/project-x.js run verify/fixtures/valid-multi-step.yaml --dry-run
+# Or via native Rust CLI:
+cargo run --bin project-x -- run verify/fixtures/valid-multi-step.yaml --dry-run
 
 # 4. Execute plan with policy and output receipt
 node dist/bin/project-x.js run verify/fixtures/valid-multi-step.yaml --out receipt.json
+# Or via native Rust CLI:
+cargo run --bin project-x -- run verify/fixtures/valid-multi-step.yaml --out receipt.json
 
 # 5. Inspect and pretty-print an execution receipt
 node dist/bin/project-x.js inspect receipt.json
+# Or via native Rust CLI:
+cargo run --bin project-x -- inspect receipt.json
 ```
 
 ### Transparent MCP Gateway Proxy

@@ -21,6 +21,11 @@ pnpm exec tsc > "$ARTIFACTS_DIR/build.log" 2>&1
 echo "Step 2: Executing Test Suite & Differentiation Tests..."
 node --test 'dist/test/**/*.test.js' | tee "$ARTIFACTS_DIR/test-results.log"
 
+if command -v cargo >/dev/null 2>&1; then
+  echo "Step 2.5: Executing Rust Workspace Test Suite..."
+  cargo test --workspace | tee -a "$ARTIFACTS_DIR/test-results.log"
+fi
+
 echo "Step 3: Verifying Input Fixture Immutability..."
 if [ ! -d "$PROJECT_ROOT/verify/fixtures" ]; then
   echo "Error: verify/fixtures directory missing"
