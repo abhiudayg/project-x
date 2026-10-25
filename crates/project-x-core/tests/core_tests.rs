@@ -262,6 +262,70 @@ fn test_audit_trace_and_plan_synthesis() {
     assert!(report.plan_yaml.contains("apiVersion: x.dev/v1alpha1"));
 }
 
+#[test]
+fn test_complex_generated_trace_cloud_incident_openai() {
+    use project_x_core::{build_dag, generate_synthetic_trace, TraceGeneratorConfig};
+
+    let config = TraceGeneratorConfig {
+        scenario: "cloud-incident".to_string(),
+        scale: 40,
+        format: "openai".to_string(),
+    };
+
+    let trace_json = generate_synthetic_trace(&config);
+    let messages = trace_json
+        .get("messages")
+        .and_then(|m| m.as_array())
+        .expect("Should contain messages array");
+    assert!(messages.len() >= 11);
+
+    let report = audit_trace(&trace_json).expect("Synthetic trace should audit cleanly");
+    assert_eq!(report.trace_name, "synthetic-cloud-incident-triage");
+    assert_eq!(report.generated_plan.spec.steps.len(), 5);
+    assert_eq!(report.savings.baseline_round_trips, 6);
+    assert_eq!(report.savings.project_x_round_trips, 1);
+    assert_eq!(report.savings.round_trips_saved, 5);
+    assert!(report.savings.token_savings_percentage > 50.0);
+    assert!(report
+        .security
+        .write_tools
+        .contains(&"k8s_patch_deployment".to_string()));
+    assert!(report
+        .security
+        .write_tools
+        .contains(&"slack_post_message".to_string()));
+
+    let dag = build_dag(&report.generated_plan).expect("Compiled plan must form a valid DAG");
+    assert_eq!(dag.topological_order.len(), 5);
+}
+
+#[test]
+fn test_complex_generated_trace_fintech_native() {
+    use project_x_core::{build_dag, generate_synthetic_trace, TraceGeneratorConfig};
+
+    let config = TraceGeneratorConfig {
+        scenario: "fintech".to_string(),
+        scale: 50,
+        format: "project-x".to_string(),
+    };
+
+    let trace_json = generate_synthetic_trace(&config);
+    let turns = trace_json
+        .get("turns")
+        .and_then(|t| t.as_array())
+        .expect("Should contain turns array");
+    assert_eq!(turns.len(), 5);
+
+    let report = audit_trace(&trace_json).expect("Synthetic fintech trace should audit cleanly");
+    assert_eq!(report.trace_name, "synthetic-fintech-reconciliation");
+    assert_eq!(report.generated_plan.spec.steps.len(), 5);
+    assert!(report.savings.token_savings_percentage > 40.0);
+
+    let dag =
+        build_dag(&report.generated_plan).expect("Compiled fintech plan must form a valid DAG");
+    assert_eq!(dag.topological_order.len(), 5);
+}
+
 #[tokio::test]
 async fn test_differentiation_write_gating_zero_steps_executed() {
     use std::sync::atomic::{AtomicUsize, Ordering};

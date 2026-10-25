@@ -2,7 +2,7 @@ use crate::types::{ExecutionPlan, PlanLimits, PlanMetadata, PlanOutputSpec, Plan
 use chrono::Utc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
@@ -573,4 +573,472 @@ pub fn audit_trace(raw: &Value) -> Result<AuditReport, AuditError> {
         security,
         markdown_summary,
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraceGeneratorConfig {
+    #[serde(default = "default_generator_scenario")]
+    pub scenario: String,
+    #[serde(default = "default_generator_scale")]
+    pub scale: usize,
+    #[serde(default = "default_generator_format")]
+    pub format: String,
+}
+
+fn default_generator_scenario() -> String {
+    "cloud-incident".to_string()
+}
+
+fn default_generator_scale() -> usize {
+    20
+}
+
+fn default_generator_format() -> String {
+    "openai".to_string()
+}
+
+impl Default for TraceGeneratorConfig {
+    fn default() -> Self {
+        Self {
+            scenario: default_generator_scenario(),
+            scale: default_generator_scale(),
+            format: default_generator_format(),
+        }
+    }
+}
+
+fn build_cloud_incident_turns(scale: usize) -> (String, Vec<TraceTurn>) {
+    let service_names = [
+        "checkout-api",
+        "auth-gateway",
+        "risk-engine",
+        "ledger-sync",
+        "notification-worker",
+        "search-indexer",
+        "billing-coordinator",
+        "order-router",
+    ];
+
+    let count = scale.max(3);
+    let mut deployments = Vec::with_capacity(count);
+
+    for i in 0..count {
+        let base_name = service_names[i % service_names.len()];
+        let dep_id = format!("dep-k8s-{:04x}", i + 1000);
+        let svc_name = format!("{}-{}", base_name, i);
+
+        let pod_count = 3.max(scale.min(5));
+        let mut pods = Vec::with_capacity(pod_count);
+        for p in 0..pod_count {
+            pods.push(json!({
+                "pod_id": format!("pod-{}-{:04x}", base_name, p),
+                "node": format!("node-c5-{}", p % 10),
+                "ip": format!("10.244.{}.{}", (i % 250) + 1, (p % 250) + 1),
+                "status": if i == 0 && p == 0 { "CrashLoopBackOff" } else { "Running" },
+                "restart_count": if i == 0 { 14 } else { 0 },
+                "started_at": "2026-10-25T08:00:00Z"
+            }));
+        }
+
+        deployments.push(json!({
+            "deployment_id": dep_id,
+            "name": svc_name,
+            "namespace": "payments",
+            "cluster": "prod-us-east-1",
+            "replicas": {
+                "desired": 6,
+                "ready": if i == 0 { 1 } else { 6 },
+                "available": if i == 0 { 1 } else { 6 },
+                "unavailable": if i == 0 { 5 } else { 0 }
+            },
+            "status": if i == 0 { "CrashLoopBackOff" } else { "Running" },
+            "image": format!("ecr.internal/core/{}:v3.18.{}", base_name, i),
+            "labels": {
+                "env": "production",
+                "tier": "critical",
+                "region": "us-east-1",
+                "team": "core-infra"
+            },
+            "resources": {
+                "limits": { "cpu": "2000m", "memory": "4Gi" },
+                "requests": { "cpu": "500m", "memory": "1Gi" }
+            },
+            "pods": pods
+        }));
+    }
+
+    let target_dep_id = format!("dep-k8s-{:04x}", 1000);
+    let target_pod_id = format!("pod-{}-{:04x}", service_names[0], 0);
+
+    let mut log_entries = Vec::with_capacity(count);
+    for l in 0..count {
+        log_entries.push(json!({
+            "timestamp": format!("2026-10-25T08:{:02}:{:02}Z", (l / 60) % 60, l % 60),
+            "level": if l % 5 == 0 { "FATAL" } else if l % 2 == 0 { "ERROR" } else { "WARN" },
+            "thread": format!("reactor-http-epoll-{}", l % 8),
+            "trace_id": format!("tr-99b821-{:04x}", l),
+            "message": if l % 5 == 0 {
+                "java.lang.OutOfMemoryError: Java heap space"
+            } else {
+                "Connection pool exhausted waiting for available channel"
+            }
+        }));
+    }
+
+    let mut metrics_series = Vec::with_capacity(count);
+    for m in 0..count {
+        metrics_series.push(json!({
+            "timestamp": format!("2026-10-25T08:{:02}:00Z", m % 60),
+            "cpu_utilization": 0.45 + ((m % 10) as f64 * 0.03),
+            "memory_rss_bytes": 4150000000_u64 + ((m as u64) * 1024),
+            "oom_events": if m > 10 { 1 } else { 0 },
+            "p99_latency_ms": 320 + (m * 4)
+        }));
+    }
+
+    let mut turn1_args = Map::new();
+    turn1_args.insert(
+        "cluster".to_string(),
+        Value::String("prod-us-east-1".to_string()),
+    );
+    turn1_args.insert(
+        "namespace".to_string(),
+        Value::String("payments".to_string()),
+    );
+
+    let mut turn2_args = Map::new();
+    turn2_args.insert("pod_id".to_string(), Value::String(target_pod_id));
+    turn2_args.insert(
+        "namespace".to_string(),
+        Value::String("payments".to_string()),
+    );
+    turn2_args.insert(
+        "tail_lines".to_string(),
+        Value::Number(serde_json::Number::from(250)),
+    );
+
+    let mut turn3_args = Map::new();
+    turn3_args.insert(
+        "deployment_id".to_string(),
+        Value::String(target_dep_id.clone()),
+    );
+    turn3_args.insert("timeframe".to_string(), Value::String("2h".to_string()));
+
+    let mut turn4_args = Map::new();
+    turn4_args.insert(
+        "deployment_id".to_string(),
+        Value::String(target_dep_id.clone()),
+    );
+    turn4_args.insert("memory_limit".to_string(), Value::String("8Gi".to_string()));
+
+    let mut turn5_args = Map::new();
+    turn5_args.insert(
+        "channel".to_string(),
+        Value::String("#incident-response".to_string()),
+    );
+    turn5_args.insert(
+        "incident_id".to_string(),
+        Value::String("inc-prod-8842".to_string()),
+    );
+    turn5_args.insert("status".to_string(), Value::String("resolved".to_string()));
+
+    let turns = vec![
+        TraceTurn {
+            id: Some("turn_1_list_deployments".to_string()),
+            tool: "k8s_list_deployments".to_string(),
+            arguments: turn1_args,
+            output: Some(json!({
+                "cluster": "prod-us-east-1",
+                "namespace": "payments",
+                "total": count,
+                "items": deployments
+            })),
+            requires_judgment: false,
+            tokens: Some(TokenUsage {
+                input: Some(1200),
+                output: Some(850 + count * 45),
+            }),
+            duration_ms: Some(310),
+        },
+        TraceTurn {
+            id: Some("turn_2_get_pod_logs".to_string()),
+            tool: "k8s_get_pod_logs".to_string(),
+            arguments: turn2_args,
+            output: Some(json!({
+                "incident_id": "inc-prod-8842",
+                "error_count": 42,
+                "root_cause": "java.lang.OutOfMemoryError: Java heap space",
+                "log_entries": log_entries
+            })),
+            requires_judgment: false,
+            tokens: Some(TokenUsage {
+                input: Some(2100 + count * 45),
+                output: Some(1450 + count * 30),
+            }),
+            duration_ms: Some(420),
+        },
+        TraceTurn {
+            id: Some("turn_3_query_metrics".to_string()),
+            tool: "telemetry_query_metrics".to_string(),
+            arguments: turn3_args,
+            output: Some(json!({
+                "deployment_id": target_dep_id,
+                "datapoints": metrics_series,
+                "recommended_memory_limit": "8Gi"
+            })),
+            requires_judgment: false,
+            tokens: Some(TokenUsage {
+                input: Some(3600),
+                output: Some(920),
+            }),
+            duration_ms: Some(280),
+        },
+        TraceTurn {
+            id: Some("turn_4_patch_deployment".to_string()),
+            tool: "k8s_patch_deployment".to_string(),
+            arguments: turn4_args,
+            output: Some(json!({
+                "deployment_id": target_dep_id,
+                "status": "RollingUpdateInitiated",
+                "generation": 14
+            })),
+            requires_judgment: false,
+            tokens: Some(TokenUsage {
+                input: Some(4550),
+                output: Some(320),
+            }),
+            duration_ms: Some(540),
+        },
+        TraceTurn {
+            id: Some("turn_5_slack_notify".to_string()),
+            tool: "slack_post_message".to_string(),
+            arguments: turn5_args,
+            output: Some(json!({
+                "ok": true,
+                "channel": "#incident-response",
+                "timestamp": "1730000000.000100"
+            })),
+            requires_judgment: false,
+            tokens: Some(TokenUsage {
+                input: Some(4900),
+                output: Some(180),
+            }),
+            duration_ms: Some(190),
+        },
+    ];
+
+    ("synthetic-cloud-incident-triage".to_string(), turns)
+}
+
+fn build_fintech_reconciliation_turns(scale: usize) -> (String, Vec<TraceTurn>) {
+    let count = scale.max(3);
+    let mut charges = Vec::with_capacity(count);
+
+    for i in 0..count {
+        let ch_id = format!("ch_3P{:08x}", i + 5000);
+        let cus_id = format!("cus_N{:06x}", i + 200);
+
+        charges.push(json!({
+            "charge_id": ch_id,
+            "customer_id": cus_id,
+            "amount_cents": 19999 + i * 500,
+            "currency": "usd",
+            "status": if i == 0 { "failed" } else { "succeeded" },
+            "failure_code": if i == 0 { "card_declined" } else { "none" },
+            "card_fingerprint": format!("card_fp_{:06x}", i + 10),
+            "risk_score": if i == 0 { 24 } else { 4 }
+        }));
+    }
+
+    let target_charge_id = format!("ch_3P{:08x}", 5000);
+    let target_customer_id = format!("cus_N{:06x}", 200);
+
+    let mut turn1_args = Map::new();
+    turn1_args.insert(
+        "limit".to_string(),
+        Value::Number(serde_json::Number::from(count)),
+    );
+    turn1_args.insert("status".to_string(), Value::String("failed".to_string()));
+
+    let mut turn2_args = Map::new();
+    turn2_args.insert(
+        "customer_id".to_string(),
+        Value::String(target_customer_id.clone()),
+    );
+
+    let mut turn3_args = Map::new();
+    turn3_args.insert("customer_id".to_string(), Value::String(target_customer_id));
+    turn3_args.insert(
+        "charge_id".to_string(),
+        Value::String(target_charge_id.clone()),
+    );
+
+    let mut turn4_args = Map::new();
+    turn4_args.insert(
+        "charge_id".to_string(),
+        Value::String(target_charge_id.clone()),
+    );
+    turn4_args.insert(
+        "action".to_string(),
+        Value::String("retry_with_capture".to_string()),
+    );
+
+    let mut turn5_args = Map::new();
+    turn5_args.insert(
+        "charge_id".to_string(),
+        Value::String(target_charge_id.clone()),
+    );
+    turn5_args.insert("status".to_string(), Value::String("succeeded".to_string()));
+
+    let turns = vec![
+        TraceTurn {
+            id: Some("turn_1_list_failed_charges".to_string()),
+            tool: "stripe_list_failed_charges".to_string(),
+            arguments: turn1_args,
+            output: Some(json!({
+                "object": "list",
+                "total_count": count,
+                "data": charges
+            })),
+            requires_judgment: false,
+            tokens: Some(TokenUsage {
+                input: Some(1100),
+                output: Some(600 + count * 50),
+            }),
+            duration_ms: Some(210),
+        },
+        TraceTurn {
+            id: Some("turn_2_query_customer".to_string()),
+            tool: "db_query_customer_account".to_string(),
+            arguments: turn2_args,
+            output: Some(json!({
+                "customer_id": format!("cus_N{:06x}", 200),
+                "tier": "enterprise",
+                "status": "active",
+                "payment_methods": [
+                    { "id": "pm_9921", "type": "card", "brand": "visa", "last4": "4242" }
+                ],
+                "account_balance_cents": 500000
+            })),
+            requires_judgment: false,
+            tokens: Some(TokenUsage {
+                input: Some(1800 + count * 50),
+                output: Some(450),
+            }),
+            duration_ms: Some(160),
+        },
+        TraceTurn {
+            id: Some("turn_3_risk_assess".to_string()),
+            tool: "risk_assess_transaction".to_string(),
+            arguments: turn3_args,
+            output: Some(json!({
+                "charge_id": target_charge_id.clone(),
+                "verdict": "allow_retry",
+                "risk_score": 12,
+                "fraud_indicators": []
+            })),
+            requires_judgment: false,
+            tokens: Some(TokenUsage {
+                input: Some(2500),
+                output: Some(220),
+            }),
+            duration_ms: Some(180),
+        },
+        TraceTurn {
+            id: Some("turn_4_retry_charge".to_string()),
+            tool: "stripe_retry_charge".to_string(),
+            arguments: turn4_args,
+            output: Some(json!({
+                "charge_id": target_charge_id.clone(),
+                "status": "succeeded",
+                "amount_settled": 19999
+            })),
+            requires_judgment: false,
+            tokens: Some(TokenUsage {
+                input: Some(3100),
+                output: Some(300),
+            }),
+            duration_ms: Some(490),
+        },
+        TraceTurn {
+            id: Some("turn_5_record_ledger".to_string()),
+            tool: "ledger_record_transaction".to_string(),
+            arguments: turn5_args,
+            output: Some(json!({
+                "ledger_entry_id": "led-entry-88912",
+                "charge_id": target_charge_id,
+                "status": "reconciled",
+                "balanced": true
+            })),
+            requires_judgment: false,
+            tokens: Some(TokenUsage {
+                input: Some(3600),
+                output: Some(180),
+            }),
+            duration_ms: Some(150),
+        },
+    ];
+
+    ("synthetic-fintech-reconciliation".to_string(), turns)
+}
+
+pub fn generate_synthetic_trace(config: &TraceGeneratorConfig) -> Value {
+    let (name, turns) = if config.scenario == "fintech" || config.scenario == "billing" {
+        build_fintech_reconciliation_turns(config.scale)
+    } else {
+        build_cloud_incident_turns(config.scale)
+    };
+
+    if config.format.to_lowercase() == "openai" {
+        let mut messages = Vec::new();
+
+        messages.push(json!({
+            "role": "user",
+            "content": format!("Execute autonomous triage scenario: {}", name)
+        }));
+
+        for turn in &turns {
+            let call_id = turn.id.clone().unwrap_or_else(|| "call_0".to_string());
+            let args_str =
+                serde_json::to_string(&turn.arguments).unwrap_or_else(|_| "{}".to_string());
+
+            messages.push(json!({
+                "role": "assistant",
+                "content": Value::Null,
+                "tool_calls": [
+                    {
+                        "id": call_id.clone(),
+                        "type": "function",
+                        "function": {
+                            "name": turn.tool.clone(),
+                            "arguments": args_str
+                        }
+                    }
+                ]
+            }));
+
+            let output_str = match &turn.output {
+                Some(out) => serde_json::to_string(out).unwrap_or_else(|_| "{}".to_string()),
+                None => "{}".to_string(),
+            };
+
+            messages.push(json!({
+                "role": "tool",
+                "tool_call_id": call_id,
+                "content": output_str
+            }));
+        }
+
+        json!({
+            "name": name,
+            "messages": messages
+        })
+    } else {
+        json!({
+            "name": name,
+            "turns": turns,
+            "modelCostPerMillionInput": default_cost_input(),
+            "modelCostPerMillionOutput": default_cost_output()
+        })
+    }
 }

@@ -41,6 +41,16 @@ enum Commands {
         #[arg(long)]
         out_report: Option<PathBuf>,
     },
+    GenerateTrace {
+        #[arg(long, default_value = "cloud-incident")]
+        scenario: String,
+        #[arg(long, default_value_t = 20)]
+        scale: usize,
+        #[arg(long, default_value = "openai")]
+        format: String,
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -258,6 +268,30 @@ async fn main() {
                     eprintln!("❌ Audit failed: {}", e);
                     std::process::exit(1);
                 }
+            }
+        }
+        Commands::GenerateTrace {
+            scenario,
+            scale,
+            format,
+            out,
+        } => {
+            let config = project_x_core::TraceGeneratorConfig {
+                scenario,
+                scale,
+                format,
+            };
+            let trace = project_x_core::generate_synthetic_trace(&config);
+            let formatted =
+                serde_json::to_string_pretty(&trace).unwrap_or_else(|_| "{}".to_string());
+            if let Some(out_path) = out {
+                if let Err(e) = fs::write(&out_path, &formatted) {
+                    eprintln!("Failed to write trace to '{:?}': {}", out_path, e);
+                    std::process::exit(1);
+                }
+                println!("Generated synthetic trace written to: {:?}", out_path);
+            } else {
+                println!("{}", formatted);
             }
         }
     }
