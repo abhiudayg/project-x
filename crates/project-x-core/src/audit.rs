@@ -114,10 +114,14 @@ pub struct AuditReport {
 }
 
 fn is_write_tool(tool_name: &str) -> bool {
-    let read_prefix =
-        Regex::new(r"^(get|list|fetch|read|describe|scan|check|query|find|inspect|search)(_|\.|$)")
-            .unwrap();
-    let write_verb = Regex::new(r"^(create|delete|remove|write|update|patch|post|deploy|restart|kill|set|apply)(_|\.|$)|(_|\.)(create|delete|remove|write|update|patch|post|deploy|restart|kill|set|apply)$").unwrap();
+    let read_prefix = Regex::new(
+        r"(^|[_|\.])(get|list|fetch|read|describe|scan|check|query|find|inspect|search)(_|\.|$)",
+    )
+    .unwrap();
+    let write_verb = Regex::new(
+        r"(^|[_|\.])(create|delete|remove|write|update|patch|post|deploy|restart|kill|set|apply)(_|\.|$)",
+    )
+    .unwrap();
 
     if read_prefix.is_match(tool_name) {
         return false;
