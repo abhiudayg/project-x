@@ -118,105 +118,89 @@ Project X is benchmarked against **Baseline A (Native MCP)** and **Baseline B (H
 
 ### Installation
 
-#### Node.js / TypeScript
 ```bash
-pnpm install
-pnpm run build
-```
-
-#### Rust (Native Core & CLI)
-```bash
+# Build all workspace crates (CLI, core library, Python bindings, Node bindings)
 cargo build --release --workspace
-# Binary output: ./target/release/project-x
+
+# The native CLI binary is produced at:
+# ./target/release/project-x
 ```
 
 ### CLI Usage (`project-x`)
 
-Project X includes both a Node.js CLI and a high-performance native Rust CLI:
+Project X includes a zero-overhead native Rust CLI:
 
 ```bash
 # 1. Audit an existing agent trace (OpenAI, LangChain, or raw JSON), calculate token/cost savings, and compile an ExecutionPlan
-node dist/bin/project-x.js audit trace.json --out-plan plan.yaml --out-report audit-report.md
-# Or via native Rust CLI:
-cargo run --bin project-x -- audit trace.json --out-plan plan.yaml --out-report audit-report.md
+./target/release/project-x audit trace.json --out-plan plan.yaml --out-report audit-report.md
 
 # 2. Validate plan syntax, schema, and DAG dependencies without executing side-effects
-node dist/bin/project-x.js validate verify/fixtures/valid-multi-step.yaml
-# Or via native Rust CLI:
-cargo run --bin project-x -- validate verify/fixtures/valid-multi-step.yaml
+./target/release/project-x validate verify/fixtures/valid-multi-step.yaml
 
 # 3. Perform a pre-execution dry run check
-node dist/bin/project-x.js run verify/fixtures/valid-multi-step.yaml --dry-run
-# Or via native Rust CLI:
-cargo run --bin project-x -- run verify/fixtures/valid-multi-step.yaml --dry-run
+./target/release/project-x run verify/fixtures/valid-multi-step.yaml --dry-run
 
 # 4. Execute plan with policy and output receipt
-node dist/bin/project-x.js run verify/fixtures/valid-multi-step.yaml --out receipt.json
-# Or via native Rust CLI:
-cargo run --bin project-x -- run verify/fixtures/valid-multi-step.yaml --out receipt.json
+./target/release/project-x run verify/fixtures/valid-multi-step.yaml --out receipt.json
 
 # 5. Inspect and pretty-print an execution receipt
-node dist/bin/project-x.js inspect receipt.json
-# Or via native Rust CLI:
-cargo run --bin project-x -- inspect receipt.json
+./target/release/project-x inspect receipt.json
 ```
 
-### Transparent MCP Gateway Proxy
+---
 
-Project X can inject transparently between any AI Agent and upstream MCP servers:
+### Polyglot Language Bindings
 
-```typescript
-import { MCPGatewayProxy, InMemoryToolAdapter } from "project-x";
+#### Python (`crates/project-x-py`)
+Prebuilt via PyO3 / Maturin:
+```python
+import project_x
 
-const upstream = new InMemoryToolAdapter();
-// Register upstream tools (Kubernetes, Postgres, etc.)
+# Validate plan and inspect DAG execution waves
+validation = project_x.validate_plan(plan_yaml)
+print(f"Valid: {validation.valid}, Waves: {validation.waves_count}")
 
-// Wrap upstream adapter with Project X Gateway
-const gateway = new MCPGatewayProxy(upstream, {
-  policy: { allowWrites: false },
-});
-
-// Exposes all upstream tools PLUS 'x_execute_plan' meta-tool
-const tools = await gateway.listTools();
-
-// Handle standard MCP JSON-RPC requests
-const rpcResponse = await gateway.handleJsonRpc({
-  id: 1,
-  method: "tools/call",
-  params: {
-    name: "x_execute_plan",
-    arguments: { plan: planYaml },
-  },
-});
+# Audit agent trace and synthesize ExecutionPlan
+report = project_x.audit_trace(trace_json_str)
 ```
 
-### Programmatic Library Usage
+#### Node.js (`crates/project-x-node`)
+Prebuilt via NAPI-RS:
+```javascript
+const { validatePlan, auditTrace } = require("./crates/project-x-node");
 
-```typescript
-import { Interpreter, parsePlan, InMemoryToolAdapter } from "project-x";
+const validation = validatePlan(planYaml);
+console.log(`Plan: ${validation.name}, Digest: ${validation.digest}`);
+```
 
-// 1. Initialize tool adapter
-const adapter = new InMemoryToolAdapter();
-adapter.registerTool({
-  capability: { name: "kubernetes.get_deployment", type: "read" },
-  handler: (args) => ({ name: args.name, status: "Running" }),
-});
+---
 
-// 2. Initialize runtime with policy
-const interpreter = new Interpreter(adapter, {
-  policy: {
-    allowedTools: new Set(["kubernetes.get_deployment"]),
-    allowWrites: false,
-  },
-});
+### Programmatic Rust Library Usage (`crates/project-x-core`)
 
-// 3. Execute plan
-const planYaml = `...`;
-const { receipt, outputs } = await interpreter.execute(planYaml);
+```rust
+use project_x_core::{parse_plan, build_dag, Interpreter, InMemoryToolAdapter, ExecutionOptions, RuntimePolicy};
+use std::sync::Arc;
+use serde_json::json;
 
-console.log("Status:", receipt.status);
-console.log("Digest:", receipt.planDigest);
-console.log("Outputs:", outputs);
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut adapter = InMemoryToolAdapter::new();
+    adapter.register_tool("telemetry.get_cluster_cpu", |_args| {
+        Ok(json!({ "cpu": 42.5 }))
+    });
+
+    let options = ExecutionOptions {
+        policy: RuntimePolicy { allow_writes: false, granted_permissions: vec![] },
+        default_timeout_ms: 10000,
+    };
+
+    let interpreter = Interpreter::new(Arc::new(adapter), options);
+    let result = interpreter.execute(plan_yaml).await?;
+
+    println!("Status: {:?}", result.receipt.status);
+    println!("Execution ID: {}", result.receipt.execution_id);
+    Ok(())
+}
 ```
 
 ---
@@ -226,9 +210,7 @@ console.log("Outputs:", outputs);
 Project X adheres to the universal `agstack` engineering policy. All verification runs output strictly to `.verify/` keeping reference fixtures in `verify/` read-only.
 
 ```bash
-# Run unit and differentiation suites via agstack harness
-pnpm run verify
-# or
+# Run complete test and lint suite via agstack harness
 bash .verify/run.sh
 ```
 

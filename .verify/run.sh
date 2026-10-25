@@ -8,26 +8,25 @@ RESULTS_DIR="$PROJECT_ROOT/.verify/results"
 
 mkdir -p "$ARTIFACTS_DIR" "$RESULTS_DIR"
 
-echo "=== agstack Verification Harness: Project X ==="
+echo "=== agstack Verification Harness: Project X (Rust Core) ==="
 echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "Target Root: $PROJECT_ROOT"
 echo "Output Directory: $ARTIFACTS_DIR"
 
 cd "$PROJECT_ROOT"
 
-echo "Step 1: Typecheck & Build..."
-pnpm exec tsc > "$ARTIFACTS_DIR/build.log" 2>&1
+echo "Step 1: Compiling Rust Workspace..."
+cargo build --workspace --all-targets > "$ARTIFACTS_DIR/build.log" 2>&1
 
-echo "Step 2: Executing Test Suite & Differentiation Tests..."
-node --test 'dist/test/**/*.test.js' | tee "$ARTIFACTS_DIR/test-results.log"
+echo "Step 2: Linters & Hygiene (rustfmt & clippy)..."
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
 
-if command -v cargo >/dev/null 2>&1; then
-  echo "Step 2.5: Executing Rust Workspace Test Suite..."
-  cargo test -p project-x-core -p project-x-cli -p project-x-node | tee -a "$ARTIFACTS_DIR/test-results.log"
-  cargo test -p project-x-py --no-default-features | tee -a "$ARTIFACTS_DIR/test-results.log"
-fi
+echo "Step 3: Executing Test Suite & Differentiation Tests..."
+cargo test -p project-x-core -p project-x-cli -p project-x-node | tee "$ARTIFACTS_DIR/test-results.log"
+cargo test -p project-x-py --no-default-features | tee -a "$ARTIFACTS_DIR/test-results.log"
 
-echo "Step 3: Verifying Input Fixture Immutability..."
+echo "Step 4: Verifying Input Fixture Immutability..."
 if [ ! -d "$PROJECT_ROOT/verify/fixtures" ]; then
   echo "Error: verify/fixtures directory missing"
   exit 1

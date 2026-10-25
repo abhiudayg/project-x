@@ -261,3 +261,139 @@ fn test_audit_trace_and_plan_synthesis() {
     assert!(report.savings.tokens_saved > 0);
     assert!(report.plan_yaml.contains("apiVersion: x.dev/v1alpha1"));
 }
+
+#[tokio::test]
+async fn test_differentiation_write_gating_zero_steps_executed() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let step_counter = Arc::new(AtomicUsize::new(0));
+
+    let mut adapter = InMemoryToolAdapter::new();
+    let counter_clone1 = step_counter.clone();
+    adapter.register_tool("read_metrics", move |_args| {
+        counter_clone1.fetch_add(1, Ordering::SeqCst);
+        Ok(json!({ "cpu": 50 }))
+    });
+
+    let counter_clone2 = step_counter.clone();
+    adapter.register_tool("delete_records", move |_args| {
+        counter_clone2.fetch_add(1, Ordering::SeqCst);
+        Ok(json!({ "deleted": true }))
+    });
+
+    let plan_yaml = r#"
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: mixed-plan
+spec:
+  steps:
+    - id: step_read
+      tool: read_metrics
+      arguments: {}
+    - id: step_delete
+      tool: delete_records
+      dependsOn: [step_read]
+      arguments: {}
+  output:
+    include: [step_read]
+"#;
+
+    let interpreter = Interpreter::new(
+        Arc::new(adapter),
+        ExecutionOptions {
+            policy: RuntimePolicy {
+                allow_writes: false,
+                granted_permissions: Vec::new(),
+            },
+            default_timeout_ms: 5000,
+        },
+    );
+
+    let res = interpreter.execute(plan_yaml).await;
+    assert!(res.is_err(), "Must be rejected at pre-execution gate");
+    assert_eq!(
+        step_counter.load(Ordering::SeqCst),
+        0,
+        "ZERO steps must have executed"
+    );
+}
+
+#[tokio::test]
+async fn test_differentiation_bounded_side_effects_on_failure() {
+    let mut adapter = InMemoryToolAdapter::new();
+    adapter.register_tool("step_fail", |_args| Err("Injected fatal error".to_string()));
+    adapter.register_tool("step_downstream", |_args| Ok(json!({ "executed": true })));
+
+    let plan_yaml = r#"
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: fail-chain
+spec:
+  steps:
+    - id: step_1
+      tool: step_fail
+      arguments: {}
+    - id: step_2
+      tool: step_downstream
+      dependsOn: [step_1]
+      arguments: {}
+  output:
+    include: [step_1]
+"#;
+
+    let interpreter = Interpreter::new(
+        Arc::new(adapter),
+        ExecutionOptions {
+            policy: RuntimePolicy {
+                allow_writes: true,
+                granted_permissions: Vec::new(),
+            },
+            default_timeout_ms: 5000,
+        },
+    );
+
+    let res = interpreter.execute(plan_yaml).await.unwrap();
+    assert_eq!(res.receipt.status, ExecutionStatus::Failed);
+    assert_eq!(
+        res.receipt.steps.get("step_1").unwrap().status,
+        StepStatus::Failed
+    );
+    assert_eq!(
+        res.receipt.steps.get("step_2").unwrap().status,
+        StepStatus::Skipped
+    );
+}
+
+#[test]
+fn test_corpus_fixtures_validate_cleanly() {
+    use std::fs;
+    use std::path::Path;
+
+    let paths = [
+        "verify/fixtures/valid-multi-step.yaml",
+        "verify/fixtures/pre-exec-error-step4.yaml",
+        "verify/fixtures/requires-judgment-handback.yaml",
+        "verify/fixtures/unauthorized-write.yaml",
+    ];
+
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+    let repo_root = Path::new(&manifest_dir)
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap_or(Path::new("."));
+
+    for p in paths {
+        let full_path = if Path::new(p).exists() {
+            Path::new(p).to_path_buf()
+        } else {
+            repo_root.join(p)
+        };
+
+        let content = fs::read_to_string(&full_path)
+            .unwrap_or_else(|e| panic!("Failed to read {:?}: {}", full_path, e));
+        let parsed = parse_plan(&content).expect("Valid fixture must parse");
+        assert_eq!(parsed.plan.api_version, "x.dev/v1alpha1");
+        assert!(!parsed.digest.is_empty());
+    }
+}
