@@ -501,3 +501,80 @@ async fn test_container_tool_adapter_lifecycle() {
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
+
+#[tokio::test]
+async fn test_concurrent_wave_execution() {
+    let yaml = r#"
+apiVersion: x.dev/v1alpha1
+kind: ExecutionPlan
+metadata:
+  name: parallel-wave-test
+spec:
+  steps:
+    - id: sleep_1
+      tool: mock.sleep
+      arguments:
+        duration_ms: 60
+    - id: sleep_2
+      tool: mock.sleep
+      arguments:
+        duration_ms: 60
+    - id: sleep_3
+      tool: mock.sleep
+      arguments:
+        duration_ms: 60
+  output:
+    include: [sleep_1, sleep_2, sleep_3]
+"#;
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct ConcurrencyTrackingAdapter {
+        active: Arc<AtomicUsize>,
+        max_seen: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl ToolAdapter for ConcurrencyTrackingAdapter {
+        async fn list_tools(&self) -> Vec<String> {
+            vec!["mock.sleep".to_string()]
+        }
+
+        async fn execute(
+            &self,
+            _name: &str,
+            args: &serde_json::Map<String, serde_json::Value>,
+        ) -> Result<serde_json::Value, String> {
+            let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_seen.fetch_max(current, Ordering::SeqCst);
+
+            let ms = args
+                .get("duration_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(50);
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+
+            self.active.fetch_sub(1, Ordering::SeqCst);
+            Ok(json!({ "slept_ms": ms }))
+        }
+    }
+
+    let active = Arc::new(AtomicUsize::new(0));
+    let max_seen = Arc::new(AtomicUsize::new(0));
+
+    let adapter = ConcurrencyTrackingAdapter {
+        active: Arc::clone(&active),
+        max_seen: Arc::clone(&max_seen),
+    };
+
+    let interpreter = Interpreter::new(Arc::new(adapter), ExecutionOptions::default());
+    let res = interpreter.execute(yaml).await.unwrap();
+
+    assert_eq!(res.receipt.status, ExecutionStatus::Complete);
+    assert_eq!(res.receipt.steps.len(), 3);
+    assert!(
+        max_seen.load(Ordering::SeqCst) >= 2,
+        "Expected concurrent execution across wave steps, max concurrency was {}",
+        max_seen.load(Ordering::SeqCst)
+    );
+}

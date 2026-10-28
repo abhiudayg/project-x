@@ -134,6 +134,9 @@ impl<T: ToolAdapter> Interpreter<T> {
             .collect();
 
         'wave_loop: for wave in &dag.execution_waves {
+            let mut pending_futures = Vec::new();
+            let mut wave_step_metadata = Vec::new();
+
             for step_id in wave {
                 let step = &step_map[step_id];
 
@@ -175,19 +178,37 @@ impl<T: ToolAdapter> Interpreter<T> {
                 total_bytes_processed += arg_bytes.len();
                 let argument_hash = compute_arg_hash(&resolved_args);
 
-                let step_start = Instant::now();
+                let adapter = Arc::clone(&self.adapter);
+                let tool_name = step.tool.clone();
+                let step_id_clone = step_id.clone();
                 let timeout_duration = std::time::Duration::from_millis(
                     step.timeout_ms.unwrap_or(self.options.default_timeout_ms),
                 );
 
-                let exec_res = tokio::time::timeout(
+                wave_step_metadata.push((
+                    step_id_clone,
+                    step.clone(),
+                    argument_hash,
                     timeout_duration,
-                    self.adapter.execute(&step.tool, &resolved_args),
-                )
-                .await;
+                ));
 
-                let step_duration_ms = step_start.elapsed().as_millis() as u64;
+                pending_futures.push(async move {
+                    let step_start = Instant::now();
+                    let exec_res = tokio::time::timeout(
+                        timeout_duration,
+                        adapter.execute(&tool_name, &resolved_args),
+                    )
+                    .await;
+                    let step_duration_ms = step_start.elapsed().as_millis() as u64;
+                    (exec_res, step_duration_ms)
+                });
+            }
 
+            let wave_results = futures::future::join_all(pending_futures).await;
+
+            for ((step_id, step, argument_hash, timeout_duration), (exec_res, step_duration_ms)) in
+                wave_step_metadata.into_iter().zip(wave_results)
+            {
                 match exec_res {
                     Ok(Ok(output_val)) => {
                         let out_bytes = serde_json::to_vec(&output_val).unwrap_or_default();
@@ -235,7 +256,7 @@ impl<T: ToolAdapter> Interpreter<T> {
                             },
                         );
 
-                        if let Some(downstream) = dag.transitive_downstream.get(step_id) {
+                        if let Some(downstream) = dag.transitive_downstream.get(&step_id) {
                             for dep_id in downstream {
                                 mark_skipped(&mut step_records, &step_map[dep_id]);
                             }
@@ -262,7 +283,7 @@ impl<T: ToolAdapter> Interpreter<T> {
                             },
                         );
 
-                        if let Some(downstream) = dag.transitive_downstream.get(step_id) {
+                        if let Some(downstream) = dag.transitive_downstream.get(&step_id) {
                             for dep_id in downstream {
                                 mark_skipped(&mut step_records, &step_map[dep_id]);
                             }
@@ -270,6 +291,10 @@ impl<T: ToolAdapter> Interpreter<T> {
                         failed_or_skipped = true;
                     }
                 }
+            }
+
+            if handback.is_some() {
+                break 'wave_loop;
             }
         }
 
