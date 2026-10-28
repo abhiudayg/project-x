@@ -461,3 +461,43 @@ fn test_corpus_fixtures_validate_cleanly() {
         assert!(!parsed.digest.is_empty());
     }
 }
+
+#[tokio::test]
+async fn test_container_tool_adapter_lifecycle() {
+    let temp_dir = std::env::temp_dir().join(format!("px-test-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    let adapter = ContainerToolAdapter::new(&temp_dir);
+    let tools = adapter.list_tools().await;
+    assert!(tools.contains(&"fs.read_file".to_string()));
+    assert!(tools.contains(&"fs.write_file".to_string()));
+    assert!(tools.contains(&"git.status".to_string()));
+    assert!(tools.contains(&"sh.exec".to_string()));
+
+    let mut write_args = serde_json::Map::new();
+    write_args.insert("path".to_string(), json!("nested/sample.txt"));
+    write_args.insert("content".to_string(), json!("hello container tools"));
+    let write_res = adapter.execute("fs.write_file", &write_args).await.unwrap();
+    assert_eq!(write_res["bytes_written"], 21);
+
+    let mut read_args = serde_json::Map::new();
+    read_args.insert("path".to_string(), json!("nested/sample.txt"));
+    let read_res = adapter.execute("fs.read_file", &read_args).await.unwrap();
+    assert_eq!(read_res["content"], "hello container tools");
+
+    let mut exists_args = serde_json::Map::new();
+    exists_args.insert("path".to_string(), json!("nested/sample.txt"));
+    let exists_res = adapter
+        .execute("fs.file_exists", &exists_args)
+        .await
+        .unwrap();
+    assert_eq!(exists_res["exists"], true);
+
+    let mut exec_args = serde_json::Map::new();
+    exec_args.insert("command".to_string(), json!("echo 'exit0-test'"));
+    let exec_res = adapter.execute("sh.exec", &exec_args).await.unwrap();
+    assert_eq!(exec_res["exit_code"], 0);
+    assert!(exec_res["stdout"].as_str().unwrap().contains("exit0-test"));
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}

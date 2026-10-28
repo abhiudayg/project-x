@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
 use project_x_core::{
-    audit_trace, build_dag, parse_plan, ExecutionOptions, InMemoryToolAdapter, Interpreter,
-    RuntimePolicy,
+    audit_trace, build_dag, parse_plan, ExecutionOptions, Interpreter, RuntimePolicy,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -50,6 +49,10 @@ enum Commands {
         format: String,
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    Mcp {
+        #[arg(long)]
+        dir: Option<PathBuf>,
     },
 }
 
@@ -154,7 +157,8 @@ async fn main() {
                 }
             }
 
-            let mut adapter = InMemoryToolAdapter::new();
+            let work_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let mut adapter = project_x_core::ContainerToolAdapter::new(&work_dir);
             adapter.register_tool("echo", |args| Ok(serde_json::Value::Object(args.clone())));
 
             let options = ExecutionOptions {
@@ -292,6 +296,230 @@ async fn main() {
                 println!("Generated synthetic trace written to: {:?}", out_path);
             } else {
                 println!("{}", formatted);
+            }
+        }
+        Commands::Mcp { dir } => {
+            use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+            let base_dir = dir
+                .or_else(|| std::env::current_dir().ok())
+                .unwrap_or_else(|| PathBuf::from("."));
+
+            let stdin = tokio::io::stdin();
+            let mut stdout = tokio::io::stdout();
+            let mut reader = BufReader::new(stdin).lines();
+
+            while let Ok(Some(line)) = reader.next_line().await {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+
+                let req: serde_json::Value = match serde_json::from_str(trimmed) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                let id = req.get("id").cloned();
+                let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
+
+                let response = match method {
+                    "initialize" => {
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {
+                                "protocolVersion": "2024-11-05",
+                                "serverInfo": {
+                                    "name": "project-x",
+                                    "version": "0.1.0"
+                                },
+                                "capabilities": {
+                                    "tools": {}
+                                }
+                            }
+                        })
+                    }
+                    "notifications/initialized" => continue,
+                    "tools/list" => {
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {
+                                "tools": [
+                                    {
+                                        "name": "execute_plan",
+                                        "description": "Execute a declarative multi-step execution plan (YAML or JSON) with AST policy validation and cryptographic receipts",
+                                        "inputSchema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "plan": {
+                                                    "type": "string",
+                                                    "description": "ExecutionPlan YAML or JSON string"
+                                                },
+                                                "allow_writes": {
+                                                    "type": "boolean",
+                                                    "description": "Whether to authorize write operations"
+                                                }
+                                            },
+                                            "required": ["plan"]
+                                        }
+                                    },
+                                    {
+                                        "name": "validate_plan",
+                                        "description": "Validate an ExecutionPlan YAML or JSON string pre-flight without executing any steps",
+                                        "inputSchema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "plan": {
+                                                    "type": "string",
+                                                    "description": "ExecutionPlan YAML or JSON string"
+                                                }
+                                            },
+                                            "required": ["plan"]
+                                        }
+                                    },
+                                    {
+                                        "name": "inspect_receipt",
+                                        "description": "Inspect and parse an ExecutionReceipt JSON string",
+                                        "inputSchema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "receipt": {
+                                                    "type": "string",
+                                                    "description": "ExecutionReceipt JSON string"
+                                                }
+                                            },
+                                            "required": ["receipt"]
+                                        }
+                                    }
+                                ]
+                            }
+                        })
+                    }
+                    "tools/call" => {
+                        let params = req.get("params").cloned().unwrap_or(serde_json::json!({}));
+                        let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                        let tool_args = params
+                            .get("arguments")
+                            .cloned()
+                            .unwrap_or(serde_json::json!({}));
+
+                        let tool_output = match tool_name {
+                            "validate_plan" => {
+                                let plan_str =
+                                    tool_args.get("plan").and_then(|v| v.as_str()).unwrap_or("");
+                                match parse_plan(plan_str) {
+                                    Ok(parsed) => match build_dag(&parsed.plan) {
+                                        Ok(dag) => serde_json::json!({
+                                            "valid": true,
+                                            "plan_name": parsed.plan.metadata.name,
+                                            "api_version": parsed.plan.api_version,
+                                            "digest": parsed.digest,
+                                            "steps_count": parsed.plan.spec.steps.len(),
+                                            "waves_count": dag.execution_waves.len(),
+                                            "topological": dag.topological_order
+                                        }),
+                                        Err(e) => {
+                                            serde_json::json!({ "valid": false, "error": e.to_string() })
+                                        }
+                                    },
+                                    Err(e) => {
+                                        serde_json::json!({ "valid": false, "error": e.to_string() })
+                                    }
+                                }
+                            }
+                            "execute_plan" => {
+                                let plan_str =
+                                    tool_args.get("plan").and_then(|v| v.as_str()).unwrap_or("");
+                                let allow_writes = tool_args
+                                    .get("allow_writes")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+
+                                let mut adapter =
+                                    project_x_core::ContainerToolAdapter::new(&base_dir);
+                                adapter.register_tool("echo", |args| {
+                                    Ok(serde_json::Value::Object(args.clone()))
+                                });
+
+                                let options = ExecutionOptions {
+                                    policy: RuntimePolicy {
+                                        allow_writes,
+                                        granted_permissions: Vec::new(),
+                                    },
+                                    default_timeout_ms: 15000,
+                                };
+
+                                let interpreter = Interpreter::new(Arc::new(adapter), options);
+                                match interpreter.execute(plan_str).await {
+                                    Ok(res) => serde_json::json!({
+                                        "success": true,
+                                        "status": format!("{:?}", res.receipt.status),
+                                        "execution_id": res.receipt.execution_id,
+                                        "receipt": res.receipt,
+                                        "outputs": res.outputs
+                                    }),
+                                    Err(e) => {
+                                        serde_json::json!({ "success": false, "error": e.to_string() })
+                                    }
+                                }
+                            }
+                            "inspect_receipt" => {
+                                let receipt_str = tool_args
+                                    .get("receipt")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                match serde_json::from_str::<project_x_core::ExecutionReceipt>(
+                                    receipt_str,
+                                ) {
+                                    Ok(rcpt) => serde_json::json!({
+                                        "valid": true,
+                                        "status": format!("{:?}", rcpt.status),
+                                        "plan_id": rcpt.plan_id,
+                                        "execution_id": rcpt.execution_id,
+                                        "duration_ms": rcpt.timestamps.duration_ms,
+                                        "steps": rcpt.steps
+                                    }),
+                                    Err(e) => {
+                                        serde_json::json!({ "valid": false, "error": e.to_string() })
+                                    }
+                                }
+                            }
+                            _ => {
+                                serde_json::json!({ "error": format!("Unknown tool: {}", tool_name) })
+                            }
+                        };
+
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": serde_json::to_string_pretty(&tool_output).unwrap_or_default()
+                                    }
+                                ]
+                            }
+                        })
+                    }
+                    _ => {
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": {
+                                "code": -32601,
+                                "message": format!("Method not found: {}", method)
+                            }
+                        })
+                    }
+                };
+
+                let resp_str = serde_json::to_string(&response).unwrap_or_default();
+                let _ = stdout.write_all(resp_str.as_bytes()).await;
+                let _ = stdout.write_all(b"\n").await;
+                let _ = stdout.flush().await;
             }
         }
     }

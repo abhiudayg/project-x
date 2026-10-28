@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod container_tools;
 pub mod dag;
 pub mod interpreter;
 pub mod parser;
@@ -8,6 +9,7 @@ pub mod types;
 pub mod verifier;
 
 pub use audit::*;
+pub use container_tools::*;
 pub use dag::*;
 pub use interpreter::*;
 pub use parser::*;

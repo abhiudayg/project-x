@@ -5,3 +5,4 @@ target/
 .verify/artifacts/
 .verify/results/
 .verify/output/
+longest_mcp_conversation.json
